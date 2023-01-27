@@ -102,7 +102,7 @@ def add_args(parser):
     if args.task in ['summarize']:
         args.lang = args.sub_task
     elif args.task in ['refine', 'concode', 'clone']:
-        args.lang = 'java'
+        args.lang = 'python'   # todo edit later if use different lang
     elif args.task == 'translate':
         args.lang = 'c_sharp' if args.sub_task == 'java-cs' else 'java'
     return args
