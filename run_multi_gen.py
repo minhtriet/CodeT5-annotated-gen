@@ -64,8 +64,6 @@ def get_max_trg_len_by_task(task, sub_task):
             max_target_length = 240
     elif task == 'concode':
         max_target_length = 150
-    elif task == 'defect':
-        max_target_length = 3
     return max_target_length
 
 
@@ -118,58 +116,51 @@ def eval_bleu(args, eval_data, eval_examples, model, tokenizer, split_tag, cur_t
             pred_ids.extend(top_preds)
 
     pred_nls = [tokenizer.decode(id, skip_special_tokens=True, clean_up_tokenization_spaces=False) for id in pred_ids]
-    if task == 'defect':
-        target_dict = {0: 'false', 1: 'true'}
-        golds = [target_dict[ex.target] for ex in eval_examples]
-        eval_acc = np.mean([int(p == g) for p, g in zip(pred_nls, golds)])
-        result = {'em': eval_acc, 'bleu': 0, 'codebleu': 0}
-
-    else:
-        dev_accs = []
-        predictions = []
-        res_dir = os.path.join(args.res_dir, cur_task)
-        if not os.path.exists(res_dir):
-            os.makedirs(res_dir)
-        output_fn = os.path.join(res_dir, "test_{}.output".format(criteria))
-        gold_fn = os.path.join(res_dir, "test_{}.gold".format(criteria))
-        with open(output_fn, 'w') as f, open(gold_fn, 'w') as f1:
-            for pred_nl, gold in zip(pred_nls, eval_examples):
-                dev_accs.append(pred_nl.strip() == gold.target.strip())
-                if task == 'summarize':
-                    predictions.append(str(gold.idx) + '\t' + pred_nl)
-                    f.write(str(gold.idx) + '\t' + pred_nl.strip() + '\n')
-                    f1.write(str(gold.idx) + '\t' + gold.target.strip() + '\n')
-                else:
-                    f.write(pred_nl.strip() + '\n')
-                    f1.write(gold.target.strip() + '\n')
-
-        try:
+    dev_accs = []
+    predictions = []
+    res_dir = os.path.join(args.res_dir, cur_task)
+    if not os.path.exists(res_dir):
+        os.makedirs(res_dir)
+    output_fn = os.path.join(res_dir, "test_{}.output".format(criteria))
+    gold_fn = os.path.join(res_dir, "test_{}.gold".format(criteria))
+    with open(output_fn, 'w') as f, open(gold_fn, 'w') as f1:
+        for pred_nl, gold in zip(pred_nls, eval_examples):
+            dev_accs.append(pred_nl.strip() == gold.target.strip())
             if task == 'summarize':
-                (goldMap, predictionMap) = smooth_bleu.computeMaps(predictions, gold_fn)
-                bleu = round(smooth_bleu.bleuFromMaps(goldMap, predictionMap)[0], 2)
+                predictions.append(str(gold.idx) + '\t' + pred_nl)
+                f.write(str(gold.idx) + '\t' + pred_nl.strip() + '\n')
+                f1.write(str(gold.idx) + '\t' + gold.target.strip() + '\n')
             else:
+                f.write(pred_nl.strip() + '\n')
+                f1.write(gold.target.strip() + '\n')
 
-                bleu = round(_bleu(gold_fn, output_fn), 2)
-                if split_tag == 'test':
-                    if task in ['summarize', 'search']:
-                        cur_lang = sub_task
-                    elif task in ['refine', 'concode', 'clone']:
-                        cur_lang = 'java'
-                    elif task == 'defect':
-                        cur_lang = 'c'
-                    elif task == 'translate':
-                        cur_lang = 'c_sharp' if sub_task == 'java-cs' else 'java'
-                    codebleu = calc_code_bleu.get_codebleu(gold_fn, output_fn, cur_lang)
-        except:
-            bleu = 0.0
-            codebleu = 0.0
+    try:
+        if task == 'summarize':
+            (goldMap, predictionMap) = smooth_bleu.computeMaps(predictions, gold_fn)
+            bleu = round(smooth_bleu.bleuFromMaps(goldMap, predictionMap)[0], 2)
+        else:
 
-        result = {}
-        em = np.mean(dev_accs) * 100
-        result['em'] = em
-        result['bleu'] = bleu
-        if not args.task == 'summarize' and split_tag == 'test':
-            result['codebleu'] = codebleu * 100
+            bleu = round(_bleu(gold_fn, output_fn), 2)
+            if split_tag == 'test':
+                if task in ['summarize', 'search']:
+                    cur_lang = sub_task
+                elif task in ['refine', 'concode', 'clone']:
+                    cur_lang = 'java'
+                elif task == 'defect':
+                    cur_lang = 'c'
+                elif task == 'translate':
+                    cur_lang = 'c_sharp' if sub_task == 'java-cs' else 'java'
+                codebleu = calc_code_bleu.get_codebleu(gold_fn, output_fn, cur_lang)
+    except:
+        bleu = 0.0
+        codebleu = 0.0
+
+    result = {}
+    em = np.mean(dev_accs) * 100
+    result['em'] = em
+    result['bleu'] = bleu
+    if not args.task == 'summarize' and split_tag == 'test':
+        result['codebleu'] = codebleu * 100
 
     logger.info("***** Eval results [%s] *****", cur_task)
     for key in sorted(result.keys()):

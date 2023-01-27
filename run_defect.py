@@ -19,22 +19,6 @@ GPT and GPT-2 are fine-tuned using a causal language modeling (CLM) loss while B
 using a masked language modeling (MLM) loss.
 """
 
-from __future__ import absolute_import
-import os
-import logging
-import argparse
-import math
-import numpy as np
-from io import open
-from tqdm import tqdm
-import torch
-from torch.utils.tensorboard import SummaryWriter
-from torch.utils.data import DataLoader, Dataset, SequentialSampler, RandomSampler, TensorDataset
-from torch.utils.data.distributed import DistributedSampler
-from transformers import (WEIGHTS_NAME, AdamW, get_linear_schedule_with_warmup,
-                          RobertaConfig, RobertaModel, RobertaTokenizer,
-                          BartConfig, BartForConditionalGeneration, BartTokenizer,
-                          T5Config, T5ForConditionalGeneration, T5Tokenizer)
 import multiprocessing
 import time
 
@@ -54,56 +38,6 @@ logging.basicConfig(format='%(asctime)s - %(levelname)s - %(name)s -   %(message
                     datefmt='%m/%d/%Y %H:%M:%S',
                     level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-
-def evaluate(args, model, eval_examples, eval_data, write_to_pred=False):
-    eval_sampler = SequentialSampler(eval_data)
-    eval_dataloader = DataLoader(eval_data, sampler=eval_sampler, batch_size=args.eval_batch_size)
-
-    # Eval!
-    logger.info("***** Running evaluation *****")
-    logger.info("  Num examples = %d", len(eval_examples))
-    logger.info("  Num batches = %d", len(eval_dataloader))
-    logger.info("  Batch size = %d", args.eval_batch_size)
-    eval_loss = 0.0
-    nb_eval_steps = 0
-    model.eval()
-    logits = []
-    labels = []
-    for batch in tqdm(eval_dataloader, total=len(eval_dataloader), desc="Evaluating"):
-        inputs = batch[0].to(args.device)
-        label = batch[1].to(args.device)
-        with torch.no_grad():
-            lm_loss, logit = model(inputs, label)
-            eval_loss += lm_loss.mean().item()
-            logits.append(logit.cpu().numpy())
-            labels.append(label.cpu().numpy())
-        nb_eval_steps += 1
-    logits = np.concatenate(logits, 0)
-    labels = np.concatenate(labels, 0)
-    preds = logits[:, 1] > 0.5
-    eval_acc = np.mean(labels == preds)
-    eval_loss = eval_loss / nb_eval_steps
-    perplexity = torch.tensor(eval_loss)
-
-    result = {
-        "eval_loss": float(perplexity),
-        "eval_acc": round(eval_acc, 4),
-    }
-
-    logger.info("***** Eval results *****")
-    for key in sorted(result.keys()):
-        logger.info("  %s = %s", key, str(round(result[key], 4)))
-
-    if write_to_pred:
-        with open(os.path.join(args.output_dir, "predictions.txt"), 'w') as f:
-            for example, pred in zip(eval_examples, preds):
-                if pred:
-                    f.write(str(example.idx) + '\t1\n')
-                else:
-                    f.write(str(example.idx) + '\t0\n')
-
-    return result
 
 
 def main():
